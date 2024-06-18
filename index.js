@@ -1,26 +1,40 @@
 const express = require("express");
-const http = require("http");
-const path = require("path");
-
-const app = express();
-const server = http.createServer(app);
+const { createServer } = require("node:http");
+const { join } = require("node:path");
 const { Server } = require("socket.io");
+const app = express();
+const server = createServer(app);
 const io = new Server(server);
+const port = 3000;
+
+app.get("/", (req, res) => {
+  res.json({ hello: "world" });
+});
+
+app.get("/hello", (req, res) => {
+  res.sendFile(join(__dirname, "index.html"));
+});
 
 io.on("connection", (socket) => {
-  console.log("Un utilisateur s'est connecté");
+  console.log("a user connected");
+
+  socket.on("STyping", () => {
+    socket.broadcast.emit("CTyping", "Quelqu'un est en train d'écrire...");
+  });
+
+  socket.on("SStopTyping", () => {
+    socket.broadcast.emit("CStopTyping");
+  });
+
+  socket.on("SMessage", (message) => {
+    io.emit("CMessage", { msg: message, id: socket.id });
+  });
 
   socket.on("disconnect", () => {
-    console.log("Un utilisateur s'est déconnecté");
+    console.log("user disconnected");
   });
 });
 
-
-
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
-});
-
-server.listen(3000, () => {
-  console.log("Serveur démarré sur le port 3000");
+server.listen(port, () => {
+  console.log("http://localhost:" + port + " à démarré correctement");
 });
