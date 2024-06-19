@@ -19,6 +19,9 @@
         font-style: italic;
         color: #6c757d;
       }
+      .navbar-nav-center {
+        margin: 0 auto;
+      }
     </style>
   </head>
   <body>
@@ -35,12 +38,25 @@
       >
         <span class="navbar-toggler-icon"></span>
       </button>
-      <div class="collapse navbar-collapse" id="navbarNav">
-        <ul class="navbar-nav mr-auto">
-          <li class="nav-item active"></li>
+      <div
+        class="collapse navbar-collapse justify-content-center"
+        id="navbarNav"
+      >
+        <ul class="navbar-nav navbar-nav-center">
+          <li class="nav-item">
+            <span class="navbar-text" id="channelNameNav">Canal: </span>
+          </li>
+          <li class="nav-item">
+            <a
+              class="nav-link"
+              href="#"
+              id="prevChannelLink"
+              style="display: none"
+              >Retour au canal précédent</a
+            >
+          </li>
         </ul>
-
-        <ul class="navbar-nav">
+        <ul class="navbar-nav ml-auto">
           <li class="nav-item">
             <a class="nav-link" href="#"
               >Messages: <span id="messageCount">0</span></a
@@ -71,25 +87,51 @@
     <script>
       const socket = io();
       let newMessageCount = 0;
-
       const form = document.getElementById("form");
       const input = document.getElementById("input");
       const messages = document.getElementById("messages");
       const typingIndicator = document.getElementById("typingIndicator");
       const messageCountElement = document.getElementById("messageCount");
+      const channelNameNav = document.getElementById("channelNameNav");
+      const prevChannelLink = document.getElementById("prevChannelLink");
+      const channelName = window.location.pathname.split("/").pop();
+      const previousChannel = localStorage.getItem("previousChannel");
+
+      localStorage.setItem("previousChannel", channelName);
+
+      channelNameNav.textContent = `Canal: ${channelName}`;
+
+      if (previousChannel && previousChannel !== channelName) {
+        prevChannelLink.href = `/channel/${previousChannel}`;
+        prevChannelLink.style.display = "block";
+      }
+
+      const storedMessages =
+        JSON.parse(localStorage.getItem(`messages_${channelName}`)) || [];
+      storedMessages.forEach((data) => {
+        const item = document.createElement("li");
+        item.textContent = data.msg;
+        item.style.color = data.id === socket.id ? "blue" : "red";
+        messages.appendChild(item);
+      });
+
+      messageCountElement.textContent = storedMessages.length;
+
+      socket.emit("join-channel", channelName);
+
       let typingTimeout;
 
       function handleTyping() {
         if (input.value.trim() === "") {
           clearTimeout(typingTimeout);
-          socket.emit("SStopTyping");
+          socket.emit("stop-typing", channelName);
         } else {
           if (!typingTimeout) {
-            socket.emit("STyping");
+            socket.emit("typing", channelName);
           }
           clearTimeout(typingTimeout);
           typingTimeout = setTimeout(() => {
-            socket.emit("SStopTyping");
+            socket.emit("stop-typing", channelName);
           }, 5000);
         }
       }
@@ -99,35 +141,35 @@
       form.addEventListener("submit", (e) => {
         e.preventDefault();
         if (input.value) {
-          socket.emit("SMessage", input.value);
+          socket.emit("send-message", { channelName, message: input.value });
           input.value = "";
           clearTimeout(typingTimeout);
-          socket.emit("SStopTyping");
+          socket.emit("stop-typing", channelName);
         }
       });
 
-      socket.on("CMessage", (data) => {
+      socket.on("receive-message", (data) => {
         const item = document.createElement("li");
         item.textContent = data.msg;
-
-        if (data.id === socket.id) {
-          item.style.color = "blue";
-        } else {
-          item.style.color = "red";
-          newMessageCount++;
-          messageCountElement.textContent = newMessageCount;
-        }
-
+        item.style.color = data.id === socket.id ? "blue" : "red";
         messages.appendChild(item);
         window.scrollTo(0, document.body.scrollHeight);
+
+        storedMessages.push(data);
+        localStorage.setItem(
+          `messages_${channelName}`,
+          JSON.stringify(storedMessages)
+        );
+
+        messageCountElement.textContent = storedMessages.length;
       });
 
-      socket.on("CTyping", (message) => {
+      socket.on("typing", (message) => {
         typingIndicator.textContent = message;
         typingIndicator.style.display = "block";
       });
 
-      socket.on("CStopTyping", () => {
+      socket.on("stop-typing", () => {
         typingIndicator.textContent = "";
         typingIndicator.style.display = "none";
       });

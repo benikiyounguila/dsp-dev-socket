@@ -1,40 +1,53 @@
 const express = require("express");
-const { createServer } = require("node:http");
-const { join } = require("node:path");
+const { createServer } = require("http");
+const { join } = require("path");
 const { Server } = require("socket.io");
+
 const app = express();
 const server = createServer(app);
 const io = new Server(server);
 const port = 3000;
 
 app.get("/", (req, res) => {
-  res.json({ hello: "world" });
+  res.sendFile(join(__dirname, "index.html"));
 });
 
-app.get("/hello", (req, res) => {
+app.get("/channel/:channelName", (req, res) => {
+  const channelName = req.params.channelName;
   res.sendFile(join(__dirname, "index.html"));
 });
 
 io.on("connection", (socket) => {
   console.log("a user connected");
 
-  socket.on("STyping", () => {
-    socket.broadcast.emit("CTyping", "Quelqu'un est en train d'écrire...");
-  });
+  socket.on("join-channel", (channelName) => {
+    socket.join(channelName);
+    console.log(`User joined channel: ${channelName}`);
 
-  socket.on("SStopTyping", () => {
-    socket.broadcast.emit("CStopTyping");
-  });
+    socket.on("send-message", (data) => {
+      const { message } = data;
+      io.to(channelName).emit("receive-message", {
+        msg: message,
+        id: socket.id,
+      });
+    });
 
-  socket.on("SMessage", (message) => {
-    io.emit("CMessage", { msg: message, id: socket.id });
-  });
+    socket.on("typing", () => {
+      socket
+        .to(channelName)
+        .emit("typing", "Quelqu'un est en train d'écrire...");
+    });
 
-  socket.on("disconnect", () => {
-    console.log("user disconnected");
+    socket.on("stop-typing", () => {
+      socket.to(channelName).emit("stop-typing");
+    });
+
+    socket.on("disconnect", () => {
+      console.log("user disconnected");
+    });
   });
 });
 
 server.listen(port, () => {
-  console.log("http://localhost:" + port + " à démarré correctement");
+  console.log("Server is running at http://localhost:" + port);
 });
